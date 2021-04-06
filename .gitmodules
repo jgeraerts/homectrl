@@ -1,0 +1,6 @@
+[submodule "lib/ArduinoModbusSlave"]
+	path = lib/ArduinoModbusSlave
+	url = git@github.com:jgeraerts/ArduinoModbusSlave.git
+[submodule "lib/arduino-multi-button"]
+	path = lib/arduino-multi-button
+	url = git@github.com:jgeraerts/arduino-multi-button.git
