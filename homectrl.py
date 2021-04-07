@@ -1,43 +1,74 @@
+#!/usr/bin/env python3
 import minimalmodbus
 import time
 import argparse
 import logging
 
+SYSTEM_SETTING_SIZE = 8
+
+class DigitalPinSetting:
+    SETTINGS_SIZE = 16
+    SETTINGS = ["mode", "group", "output_value",
+                "click_command", "single_click_command", "long_click_command",
+                "double_click_command", "signal_rise_command",
+                "signal_fall_command", "release_command"]
+
+    def __init__(self, instrument, pinindex):
+        self.instrument=instrument
+        self.pinindex=pinindex
+        self.address = SYSTEM_SETTING_SIZE + pinindex * DigitalPinSetting.SETTINGS_SIZE
+
+    def set(self, setting, value):
+        idx = DigitalPinSetting.SETTINGS.index(setting);
+        self.instrument.write_register(self.address + idx, value)
+
+    def print(self):
+        val = self.instrument.read_registers(self.address, DigitalPinSetting.SETTINGS_SIZE, functioncode=3)
+        for i, setting in enumerate(DigitalPinSetting.SETTINGS): 
+            print("pin %d %s: %x" % (self.pinindex, setting, val[i]));
+
+class ButtonCounters:
+    COUNTER_OFFSET=8
+    COUNTER_SIZE=8
+    COUNTERS = ["pin_number", "click_cnt", "single_click_cnt", "double_click_cnt", "long_press_cnt", "release_cnt"]
+
+    def __init__(self, instrument, pinindex):
+        self.instrument=instrument
+        self.pinindex=pinindex
+        self.address = ButtonCounters.COUNTER_OFFSET + pinindex * ButtonCounters.COUNTER_SIZE
+
+    def print(self):
+        val = self.instrument.read_registers(self.address, ButtonCounters.COUNTER_SIZE, functioncode=4)
+        for i, setting in enumerate(ButtonCounters.COUNTERS): 
+            print("pin %d %s: %x" % (self.pinindex, setting, val[i]));
+
+
 class HomeControl:
     def __init__(self):
         self.instrument = minimalmodbus.Instrument('/dev/tty.usbserial-142320', 1, debug=False)
-        self.instrument.serial.baudrate = 9600
+        self.instrument.serial.baudrate = 19200
         self.number_of_pins = self.instrument.read_register(0, functioncode=4);
 
     def dump_coils(self):
-        for i in range(0, self.number_of_pins):
-            val = self.instrument.read_bit(i, functioncode=1);
+        vals = self.instrument.read_bits(0, self.number_of_pins,functioncode=1);
+        for i, val in enumerate(vals):
             print("coil %d: %d" % (i, val));
 
     def dump_holding_registers(self):
-        for i in range(0, 8+15*12):
-            val = self.instrument.read_register(i)
-            print("holding register %d: %x" % (i, val));
+        for i in range(0, self.number_of_pins):
+            DigitalPinSetting(self.instrument, i).print()
 
     def dump_input_registers(self):
-        for i in range(0, self.number_of_pins*8+8):
+        for i in range(0, 8):
             val = self.instrument.read_register(i, functioncode=4)
             print("input register %d: %x" % (i, val));
+        for i in range(0, self.number_of_pins):
+            ButtonCounters(self.instrument, i).print()
 
-    def set_pin_mode(self, pinindex, value):
-        registerindex = 8 + 16*pinindex + 0;
-        logging.debug("setting pin mode register index %d to value %d", registerindex, value)
-        self.instrument.write_register(registerindex, value);
-
-    def set_group(self, pinindex, value):
-        registerindex = 8 + 16*pinindex + 1;
-        logging.debug("setting pin group register index %d to value %d", registerindex, value)
-        self.instrument.write_register(registerindex, value);
-
-    def set_single_click_command(self, pinindex, value):
-        registerindex = 8 + 16*pinindex + 4;
-        logging.debug("setting pin single click command register index %d to value %d", registerindex, value)
-        self.instrument.write_register(registerindex, value);
+    def pinsetting(self, pinindex):
+        if (pinindex >= self.number_of_pins or pinindex < 0):
+            raise ValueError("pinindex out of range");
+        return DigitalPinSetting(self.instrument, pinindex);
 
     def set_coil(self,pinindex, value):
         self.instrument.write_bit(pinindex, value);
@@ -48,10 +79,9 @@ parser.add_argument("--dumpcoils", help="dump coils", action="store_true")
 parser.add_argument("--dumpholdingregisters", help="dump holding registers", action="store_true");
 parser.add_argument("--dumpinputregisters", help="dump input registers", action="store_true");
 parser.add_argument("--pin-index", dest='pinindex', help="pin index", type=int)
-parser.add_argument("--set-mode", dest='mode', action='store_true')
-parser.add_argument("--set-group", dest='group', action='store_true')
-parser.add_argument("--set-single-click-command", dest='singleclickcommand', action='store_true')
-parser.add_argument("--set-coil", dest='setcoil', action='store_true');
+group = parser.add_mutually_exclusive_group();
+group.add_argument("--pin-setting", dest='pinsetting')
+group.add_argument("--set-coil", dest='setcoil', action='store_true');
 parser.add_argument("val", type=int, nargs='?')
 args = parser.parse_args()
 
@@ -66,14 +96,8 @@ if(args.dumpholdingregisters):
 if(args.dumpinputregisters):
     homectrl.dump_input_registers()
 
-if(args.singleclickcommand):
-    homectrl.set_single_click_command(args.pinindex, args.val)
-
-if(args.group):
-    homectrl.set_group(args.pinindex, args.val);
-
-if(args.mode):
-    homectrl.set_pin_mode(args.pinindex, args.val)
+if(args.pinsetting):
+    homectrl.pinsetting(args.pinindex).set(args.pinsetting, args.val)
 
 if(args.setcoil):
     homectrl.set_coil(args.pinindex, args.val);
