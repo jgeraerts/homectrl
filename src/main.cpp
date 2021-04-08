@@ -32,44 +32,65 @@ uint8_t is_output(digital_pin_setting_t *setting) {
   return pin_mode(setting)  == DIGITAL_PIN_MODE_OUTPUT;
 }
 
+uint8_t has_pwm(digital_pin_setting_t *setting) {
+  return setting->mode & DIGITAL_PIN_PWM_MASK;
+}
+
 uint8_t has_button(digital_pin_setting_t *setting) {
   return (setting->mode & DIGITAL_PIN_BUTTON_MASK) > 0;
 }
 
 void update_output(uint8_t index, uint8_t new_value) {
-  if (is_output(&(settings.digital_pin_settings[index]))) {
+  digital_pin_setting_t setting = settings.digital_pin_settings[index];
+  if (is_output(&setting)) {
     current_values[index] = new_value;
     settings.digital_pin_settings[index].output_value = new_value;
     save_settings();
-    digitalWrite(digital_pins_numbers[index], new_value);
+    if (has_pwm(&setting)) {
+      analogWrite(digital_pins_numbers[index], new_value);
+    } else {
+      digitalWrite(digital_pins_numbers[index], new_value);
+    }
   }
 }
 
 void trigger_command(uint8_t index, uint8_t command) {
-
-  digital_pin_setting_t setting = settings.digital_pin_settings[index];
-  uint8_t group = setting.group;
+    
+  uint8_t group = settings.digital_pin_settings[index].group;
   if (group == 0) {
     return;
   }
   for (uint8_t i = 0; i < NR_OF_DIGITAL_PINS; i++) {
-    
-    if (is_output(&(settings.digital_pin_settings[i])) && settings.digital_pin_settings[i].group == group) {
-      switch (command) {
-      case COMMAND_NONE:
-        break;
-      case COMMAND_ON:
-        update_output(i, 0x1);
-        break;
-      case COMMAND_OFF:
-        update_output(i, 0x0);
-        break;
-      case COMMAND_TOGGLE:
-        update_output(i, current_values[i] > 0 ? 0 : 1);
-        break;
-      default:
-        break;
+    digital_pin_setting_t setting = settings.digital_pin_settings[i];
+    if (settings.digital_pin_settings[i].group != group || !is_output(&setting)) {
+      continue;
+    }
+    uint8_t pwm = has_pwm(&setting);
+    uint8_t on_value = pwm ? 0xFF : 0x1;
+    switch (command) {
+    case COMMAND_NONE:
+      break;
+    case COMMAND_ON:
+      update_output(i, on_value);
+      break;
+    case COMMAND_OFF:
+      update_output(i, 0x0);
+      break;
+    case COMMAND_TOGGLE:
+      update_output(i, current_values[i] > 0 ? 0 : on_value);
+      break;
+    case COMMAND_PWM_INCREASE:
+      if (pwm && current_values[i] < 0xFF) {
+        update_output(i, current_values[i]+1);
       }
+      break;
+    case COMMAND_PWM_DECREASE:
+      if (pwm && current_values[i] > 0x00) {
+        update_output(i, current_values[i]-1);
+      }
+      break;
+    default:
+      break;
     }
   }
 }
@@ -144,8 +165,7 @@ uint8_t validate_pin_mode(uint8_t value) {
 }
 
 uint8_t validate_command(uint8_t value) {
-  if (value == COMMAND_NONE || value == COMMAND_ON || value == COMMAND_OFF ||
-      value == COMMAND_TOGGLE) {
+  if (value >= COMMAND_NONE && value <= COMMAND_COUNTER_STOP){
     return STATUS_OK;
   }
   return STATUS_ILLEGAL_DATA_VALUE;
@@ -290,33 +310,7 @@ uint8_t cb_write_holding_register(uint8_t fc, uint16_t address, uint16_t length)
   return STATUS_OK;
 }
 
-#ifndef UNIT_TEST
-void setup() {
-  Serial.begin(BAUD_RATE);
-  memset(&settings, 0, sizeof(settings_t));
-  EEPROM.get(SETTINGS_OFFSET, settings);
-  if (settings.magic != MAGIC) {
-    settings.magic = MAGIC;
-    save_settings();
-  }
-  for (uint8_t i = 0; i < NR_OF_DIGITAL_PINS; i++) {
-    digital_pin_setting_t pin_setting = settings.digital_pin_settings[i];
-    pinMode(digital_pins_numbers[i], pin_mode(&pin_setting));
-    if (is_output(&pin_setting) ) {
-      update_output(i,pin_setting.output_value);
-    }  
-  }
-  slave.cbVector[CB_READ_COILS] = cb_read_coil;
-  slave.cbVector[CB_WRITE_COILS] = cb_write_coil;
-  slave.cbVector[CB_READ_HOLDING_REGISTERS] = cb_read_holding_register;
-  slave.cbVector[CB_WRITE_HOLDING_REGISTERS] = cb_write_holding_register;
-  slave.cbVector[CB_READ_INPUT_REGISTERS] = cb_read_input_register;
-  slave.begin(BAUD_RATE);
-}
-
-
-void loop() {
-  slave.poll();
+void poll_inputs() {
   for (uint8_t i = 0; i < NR_OF_DIGITAL_PINS; i++) {
     digital_pin_setting_t* setting = &(settings.digital_pin_settings[i]);
     if(is_output(setting)){
@@ -351,6 +345,35 @@ void loop() {
       current_values[i] = rawValue;
     }
   }
+}
+
+#ifndef UNIT_TEST
+void setup() {
+  Serial.begin(BAUD_RATE);
+  memset(&settings, 0, sizeof(settings_t));
+  EEPROM.get(SETTINGS_OFFSET, settings);
+  if (settings.magic != MAGIC) {
+    settings.magic = MAGIC;
+    save_settings();
+  }
+  for (uint8_t i = 0; i < NR_OF_DIGITAL_PINS; i++) {
+    digital_pin_setting_t pin_setting = settings.digital_pin_settings[i];
+    pinMode(digital_pins_numbers[i], pin_mode(&pin_setting));
+    if (is_output(&pin_setting) ) {
+      update_output(i,pin_setting.output_value);
+    }  
+  }
+  slave.cbVector[CB_READ_COILS] = cb_read_coil;
+  slave.cbVector[CB_WRITE_COILS] = cb_write_coil;
+  slave.cbVector[CB_READ_HOLDING_REGISTERS] = cb_read_holding_register;
+  slave.cbVector[CB_WRITE_HOLDING_REGISTERS] = cb_write_holding_register;
+  slave.cbVector[CB_READ_INPUT_REGISTERS] = cb_read_input_register;
+  slave.begin(BAUD_RATE);
+}
+
+void loop() {
+  slave.poll();
+  poll_inputs();
 };
 
 #endif
