@@ -165,7 +165,7 @@ uint8_t validate_pin_mode(uint8_t value) {
 }
 
 uint8_t validate_command(uint8_t value) {
-  if (value >= COMMAND_NONE && value <= COMMAND_COUNTER_STOP){
+  if (value >= COMMAND_NONE && value <= COMMAND_PWM_DECREASE){
     return STATUS_OK;
   }
   return STATUS_ILLEGAL_DATA_VALUE;
