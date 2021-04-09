@@ -51,7 +51,6 @@ typedef struct __attribute__((__packed__)) {
   uint8_t magic;
   uint8_t slave_id;
   uint8_t reserved[6];
-  digital_pin_setting_t digital_pin_settings[NR_OF_DIGITAL_PINS];
 } settings_t;
 
 typedef struct {
@@ -62,15 +61,25 @@ typedef struct {
   uint16_t release_cnt;
 } digital_pin_counters_t;
 
+typedef struct {
+  uint8_t index;
+  digital_pin_setting_t *settings;
+  digital_pin_counters_t *counters;
+} digital_pin_context_t;
+
+
 extern const uint8_t digital_pins_numbers[];
 extern digital_pin_counters_t counters[];
-extern settings_t settings;
 extern MultiButton buttons[];
 extern uint8_t current_values[];
 
-void handle_click(uint8_t index);
+void handle_click(digital_pin_context_t *pin_ctx);
 
 uint8_t read_setting(uint8_t index);
 uint8_t write_setting(uint8_t index, uint8_t value);
 uint16_t read_single_input_register(uint16_t address);
+void write_digital_pin_settings_to_eeprom(uint8_t index, digital_pin_setting_t &setting);
+void read_digital_pin_settings_from_eeprom(uint8_t index, digital_pin_setting_t &setting);
+void read_settings_from_eeprom(settings_t &settings);
+void write_settings_to_eeprom(settings_t &settings); 
 #endif

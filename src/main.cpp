@@ -9,7 +9,6 @@ Modbus slave(Serial, DEFAULT_SLAVE_ID, RS485_CTRL_PIN);
 
 const uint8_t digital_pins_numbers[NR_OF_DIGITAL_PINS] = {2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13};
 digital_pin_counters_t counters[NR_OF_DIGITAL_PINS];
-settings_t settings;
 MultiButton buttons[NR_OF_DIGITAL_PINS];
 uint8_t current_values[NR_OF_DIGITAL_PINS];
 
@@ -20,8 +19,24 @@ void clear_eeprom() {
   }
 }
 
-void save_settings() {
+void read_settings_from_eeprom(settings_t &settings) {
+  EEPROM.get(SETTINGS_OFFSET, settings);
+}
+
+void write_settings_to_eeprom(settings_t &settings) {
   EEPROM.put(SETTINGS_OFFSET, settings);
+}
+
+inline uint8_t pin_setting_start_address(uint8_t index) {
+  return SETTINGS_OFFSET + sizeof(settings_t) + index* sizeof(digital_pin_setting_t);
+}
+
+void read_digital_pin_settings_from_eeprom(uint8_t index, digital_pin_setting_t &setting) {
+  EEPROM.get(pin_setting_start_address(index), setting);
+}
+
+void write_digital_pin_settings_to_eeprom(uint8_t index, digital_pin_setting_t &setting) {
+  EEPROM.put(pin_setting_start_address(index), setting);
 }
 
 uint8_t pin_mode(digital_pin_setting_t *setting) {
@@ -41,11 +56,12 @@ uint8_t has_button(digital_pin_setting_t *setting) {
 }
 
 void update_output(uint8_t index, uint8_t new_value) {
-  digital_pin_setting_t setting = settings.digital_pin_settings[index];
+  digital_pin_setting_t setting;
+  read_digital_pin_settings_from_eeprom(index, setting);
   if (is_output(&setting)) {
     current_values[index] = new_value;
-    settings.digital_pin_settings[index].output_value = new_value;
-    save_settings();
+    setting.output_value = new_value;
+    write_digital_pin_settings_to_eeprom(index, setting);
     if (has_pwm(&setting)) {
       analogWrite(digital_pins_numbers[index], new_value);
     } else {
@@ -54,15 +70,15 @@ void update_output(uint8_t index, uint8_t new_value) {
   }
 }
 
-void trigger_command(uint8_t index, uint8_t command) {
-    
-  uint8_t group = settings.digital_pin_settings[index].group;
+void trigger_command(digital_pin_context_t *origin_pin, uint8_t command) {
+  uint8_t group = origin_pin->settings->group;
   if (group == 0) {
     return;
   }
   for (uint8_t i = 0; i < NR_OF_DIGITAL_PINS; i++) {
-    digital_pin_setting_t setting = settings.digital_pin_settings[i];
-    if (settings.digital_pin_settings[i].group != group || !is_output(&setting)) {
+    digital_pin_setting_t setting;
+    read_digital_pin_settings_from_eeprom(i, setting);
+    if (setting.group != group || !is_output(&setting)) {
       continue;
     }
     uint8_t pwm = has_pwm(&setting);
@@ -95,37 +111,37 @@ void trigger_command(uint8_t index, uint8_t command) {
   }
 }
 
-void handle_click(uint8_t index) {
-  counters[index].click_cnt++;
-  trigger_command(index, settings.digital_pin_settings[index].click_command);
+void handle_click(digital_pin_context_t *pin_ctx) {
+  pin_ctx->counters->click_cnt++;
+  trigger_command(pin_ctx, pin_ctx->settings->click_command);
 }
 
-void handle_single_click(uint8_t index) {
-  counters[index].single_click_cnt++;
-  trigger_command(index, settings.digital_pin_settings[index].single_click_command);
+void handle_single_click(digital_pin_context_t *pin_ctx) {
+  pin_ctx->counters->single_click_cnt++;
+  trigger_command(pin_ctx, pin_ctx->settings->single_click_command);
 }
 
-void handle_long_click(uint8_t index) {
-  counters[index].long_press_cnt++;
-  trigger_command(index, settings.digital_pin_settings[index].long_click_command);
+void handle_long_click(digital_pin_context_t *pin_ctx) {
+  pin_ctx->counters->long_press_cnt++;
+  trigger_command(pin_ctx, pin_ctx->settings->long_click_command);
 }
 
-void handle_double_click(uint8_t index) {
-  counters[index].double_click_cnt++;
-  trigger_command(index, settings.digital_pin_settings[index].double_click_command);
+void handle_double_click(digital_pin_context_t *pin_ctx) {
+  pin_ctx->counters->double_click_cnt++;
+  trigger_command(pin_ctx, pin_ctx->settings->double_click_command);
 }
 
-void handle_release(uint8_t index) {
-  counters[index].release_cnt++;
-  trigger_command(index, settings.digital_pin_settings[index].release_command);
+void handle_release(digital_pin_context_t *pin_ctx) {
+  pin_ctx->counters->release_cnt++;
+  trigger_command(pin_ctx, pin_ctx->settings->release_command);
 }
 
-void handle_rise(uint8_t index) {
-  trigger_command(index, settings.digital_pin_settings[index].signal_rise_command);
+void handle_rise(digital_pin_context_t *pin_ctx) {
+  trigger_command(pin_ctx, pin_ctx->settings->signal_rise_command);
 }
 
-void handle_fall(uint8_t index) {
-  trigger_command(index, settings.digital_pin_settings[index].signal_fall_command);
+void handle_fall(digital_pin_context_t *pin_ctx) {
+  trigger_command(pin_ctx, pin_ctx->settings->signal_fall_command);
 }
 
 uint8_t cb_read_coil(uint8_t fc, uint16_t address, uint16_t length) {
@@ -145,13 +161,12 @@ uint8_t cb_write_coil(uint8_t fc, uint16_t address, uint16_t length) {
   for (uint8_t i = 0; i < length; i++) {
     update_output(address+i, slave.readCoilFromBuffer(i));
   }
-  
   return STATUS_OK;
 }
 
 uint8_t read_setting(uint8_t index) {
-  uint8_t* settings_ptr = (uint8_t *)&settings;
-  uint8_t value = *(settings_ptr +index);
+  uint8_t value = 0;
+  EEPROM.get(index, value);
   return value;
 };
 
@@ -172,7 +187,6 @@ uint8_t validate_command(uint8_t value) {
 }
 
 uint8_t write_digital_pin_setting(uint8_t pin, uint8_t offset, uint8_t value) {
-  uint8_t*  pin_setting  = (uint8_t *)(&(settings.digital_pin_settings[pin]));
   if (offset == 0) {
     uint8_t status = validate_pin_mode(value);
     if (status != STATUS_OK) {
@@ -186,8 +200,7 @@ uint8_t write_digital_pin_setting(uint8_t pin, uint8_t offset, uint8_t value) {
       return status;
     }
   }
-  *(pin_setting + offset) = value;
-  save_settings();
+  EEPROM.put(pin_setting_start_address(pin) + offset, value);
   return STATUS_OK;
 }
 
@@ -201,7 +214,7 @@ uint8_t write_setting(uint8_t index, uint8_t value) {
     if (value > 0xFF) {
       return STATUS_ILLEGAL_DATA_VALUE;
     } else {
-      settings.slave_id=value;
+      EEPROM.put(index, value);
       return STATUS_OK;
     }
   }
@@ -281,7 +294,7 @@ uint8_t cb_read_input_register(uint8_t fc, uint16_t address, uint16_t length) {
 
 
 uint8_t cb_read_holding_register(uint8_t fc, uint16_t address, uint16_t length) {
-  uint16_t max_size = sizeof(settings);
+  uint16_t max_size = sizeof(settings_t) + sizeof(digital_pin_setting_t) * NR_OF_DIGITAL_PINS;
   if (address > max_size || address + length > max_size) {
     return STATUS_ILLEGAL_DATA_ADDRESS;
   }
@@ -293,7 +306,7 @@ uint8_t cb_read_holding_register(uint8_t fc, uint16_t address, uint16_t length) 
 }
 
 uint8_t cb_write_holding_register(uint8_t fc, uint16_t address, uint16_t length) {
-  uint16_t max_size = sizeof(settings);
+  uint16_t max_size = sizeof(settings_t) + sizeof(digital_pin_setting_t) * NR_OF_DIGITAL_PINS;
   if (address < 1 || address > max_size || address + length > max_size) {
     return STATUS_ILLEGAL_DATA_ADDRESS;
   }
@@ -310,37 +323,42 @@ uint8_t cb_write_holding_register(uint8_t fc, uint16_t address, uint16_t length)
   return STATUS_OK;
 }
 
+
+
 void poll_inputs() {
   for (uint8_t i = 0; i < NR_OF_DIGITAL_PINS; i++) {
-    digital_pin_setting_t* setting = &(settings.digital_pin_settings[i]);
-    if(is_output(setting)){
+    digital_pin_setting_t setting;
+    read_digital_pin_settings_from_eeprom(i, setting);
+    digital_pin_context_t pin_ctx = {
+      i, &setting, counters+i
+    };
+    if (is_output(&setting)) {
       continue;
     }
     uint8_t rawValue = digitalRead(digital_pins_numbers[i]);
-    if (has_button(setting)) {
-      
+    if (has_button(&setting)) {
       buttons[i].update(rawValue == 0);
       if (buttons[i].isClick()) {
-        handle_click(i);
+        handle_click(&pin_ctx);
       }
       if (buttons[i].isSingleClick()) {
-        handle_single_click(i);
+        handle_single_click(&pin_ctx);
       }
       if (buttons[i].isLongClick()) {
-        handle_long_click(i);
+        handle_long_click(&pin_ctx);
       }
       if (buttons[i].isDoubleClick()) {
-        handle_double_click(i);
+        handle_double_click(&pin_ctx);
       }
       if (buttons[i].isReleased()) {
-        handle_release(i);
+        handle_release(&pin_ctx);
       }
     } else {
       if (current_values[i] < rawValue) {
-        handle_rise(i);
+        handle_rise(&pin_ctx);
       }
       if (current_values[i] > rawValue) {
-        handle_fall(i);
+        handle_fall(&pin_ctx);
       }
       current_values[i] = rawValue;
     }
@@ -349,15 +367,18 @@ void poll_inputs() {
 
 #ifndef UNIT_TEST
 void setup() {
+  settings_t settings;
+  read_settings_from_eeprom(settings);
   Serial.begin(BAUD_RATE);
   memset(&settings, 0, sizeof(settings_t));
-  EEPROM.get(SETTINGS_OFFSET, settings);
+  
   if (settings.magic != MAGIC) {
     settings.magic = MAGIC;
-    save_settings();
+    write_settings_to_eeprom(settings);
   }
   for (uint8_t i = 0; i < NR_OF_DIGITAL_PINS; i++) {
-    digital_pin_setting_t pin_setting = settings.digital_pin_settings[i];
+    digital_pin_setting_t pin_setting;
+    read_digital_pin_settings_from_eeprom(i, pin_setting);
     pinMode(digital_pins_numbers[i], pin_mode(&pin_setting));
     if (is_output(&pin_setting) ) {
       update_output(i,pin_setting.output_value);
