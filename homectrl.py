@@ -11,7 +11,8 @@ class DigitalPinSetting:
     SETTINGS = ["mode", "group", "output_value",
                 "click_command", "single_click_command", "long_click_command",
                 "double_click_command", "signal_rise_command",
-                "signal_fall_command", "release_command"]
+                "signal_fall_command", "release_command",
+                "pwm_on_value"]
 
     def __init__(self, instrument, pinindex):
         self.instrument=instrument

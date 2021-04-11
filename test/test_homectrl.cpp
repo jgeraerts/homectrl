@@ -11,13 +11,10 @@ settings_t settings {
 
 uint8_t pinidx=2;
 
-digital_pin_setting_t pin_settings;
-
 digital_pin_context_t pin_ctx;
 
 void setUp() {
   pin_ctx.index=pinidx;
-  pin_ctx.settings = &pin_settings;
   pin_ctx.counters = counters + pinidx;
 
 }
@@ -46,13 +43,13 @@ void test_read_setting_slave_id(void) {
 
 void test_r_setting_group_p2(void) {
   write_setting(8 + (2 * 16) + 1, 23);
-  read_digital_pin_settings_from_eeprom(pinidx, pin_settings);
-  TEST_ASSERT_EQUAL(23, pin_settings.group);
+  read_digital_pin_settings_from_eeprom(pinidx, pin_ctx.settings);
+  TEST_ASSERT_EQUAL(23, pin_ctx.settings.group);
 }
 
 void test_write_setting_mode_pin_2(void) {
-  pin_settings.mode=DIGITAL_PIN_MODE_OUTPUT;
-  write_digital_pin_settings_to_eeprom(pinidx, pin_settings);
+  pin_ctx.settings.mode=DIGITAL_PIN_MODE_OUTPUT;
+  write_digital_pin_settings_to_eeprom(pinidx, pin_ctx.settings);
   uint8_t value = read_setting(8+(2*16)+0);
   TEST_ASSERT_EQUAL(DIGITAL_PIN_MODE_OUTPUT, value);
 }
