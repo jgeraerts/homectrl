@@ -243,11 +243,11 @@ state_t handle_output_pwm_down_wait(digital_pin_context_t *ctx,
 state_t handle_output_pwm_up_down_idle(digital_pin_context_t *ctx,
                                        uint8_t command) {
   if (command == COMMAND_TRIGGER_PWM_UP_DOWN_START) {
-    save_pwm_on_value(ctx);
     return OUTPUT_STATE_PWM_DOWN;
   }
   unsigned long diff = millis_since_last_state_change(ctx);
   if (diff > UP_DOWN_TIMEOUT) {
+    save_pwm_on_value(ctx);
     return OUTPUT_STATE_IDLE;
   } else {
     return OUTPUT_STATE_PWM_UP_DOWN_IDLE;
