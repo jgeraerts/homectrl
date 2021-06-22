@@ -417,6 +417,13 @@ uint8_t write_digital_pin_setting(uint8_t pin, uint8_t offset, uint8_t value) {
       return status;
     }
   }
+  if (offset == 2) {
+    //todo validate if value matches pwm or not. Preferrably the output
+    // state machine is triggered here
+    digital_pin_context_t ctx;
+    init_digital_pin_context(pin, &ctx);
+    set_pin_output(&ctx, value);
+  }
   EEPROM.put(pin_setting_start_address(pin) + offset, value);
   return STATUS_OK;
 }
