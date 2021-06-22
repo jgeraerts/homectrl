@@ -469,6 +469,7 @@ uint16_t read_counter(uint8_t index) {
 #define INPUT_REGISTER_NUMBER_OF_PINS_ADDRESS 0
 #define INPUT_REGISTER_PER_PIN_ADDRESS_OFFSET 8
 #define INPUT_REGISTER_PER_PIN_PINNUMBER_ADDRESS 0
+#define INPUT_REGISTER_UPTIME_ADDRESS 1
 #define INPUT_REGISTER_PER_PIN_RESERVED 6
 #define INPUT_REGISTER_PER_PIN_SIZE 8
 #define INPUT_REGISTER_PER_PIN_COUNTER_SIZE 5
@@ -476,6 +477,12 @@ uint16_t read_counter(uint8_t index) {
 uint16_t read_single_input_register(uint16_t address) {
   if (address == INPUT_REGISTER_NUMBER_OF_PINS_ADDRESS) {
     return NR_OF_DIGITAL_PINS;
+  }
+  if (address == INPUT_REGISTER_UPTIME_ADDRESS) {
+    return (millis() & 0xFFFF);
+  }
+  if (address == INPUT_REGISTER_UPTIME_ADDRESS + 1) {
+    return (millis() >> 16)&0xFFFF;
   }
   if (address < INPUT_REGISTER_PER_PIN_ADDRESS_OFFSET) {
     return INPUT_REGISTER_VALUE_RESERVED;

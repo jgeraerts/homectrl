@@ -45,10 +45,13 @@ class ButtonCounters:
 
 
 class HomeControl:
-    def __init__(self):
-        self.instrument = minimalmodbus.Instrument('/dev/tty.usbserial-142320', 1, debug=False)
+    def __init__(self, debug=False):
+        self.instrument = minimalmodbus.Instrument('/dev/tty.usbserial-143320', 1, debug=debug)
         self.instrument.serial.baudrate = 19200
         self.number_of_pins = self.instrument.read_register(0, functioncode=4);
+
+    def uptime(self):
+        print("uptime: %d seconds" % (self.instrument.read_long(1, functioncode=4, signed=False, byteorder=minimalmodbus.BYTEORDER_LITTLE_SWAP) / 1000))
 
     def dump_coils(self):
         vals = self.instrument.read_bits(0, self.number_of_pins,functioncode=1);
@@ -77,16 +80,18 @@ class HomeControl:
 logging.basicConfig(level=logging.DEBUG);
 parser = argparse.ArgumentParser()
 parser.add_argument("--dumpcoils", help="dump coils", action="store_true")
-parser.add_argument("--dumpholdingregisters", help="dump holding registers", action="store_true");
-parser.add_argument("--dumpinputregisters", help="dump input registers", action="store_true");
+parser.add_argument("--dumpholdingregisters", help="dump holding registers", action="store_true")
+parser.add_argument("--dumpinputregisters", help="dump input registers", action="store_true")
 parser.add_argument("--pin-index", dest='pinindex', help="pin index", type=int)
+parser.add_argument("--uptime", help="print uptime", action="store_true")
+parser.add_argument("--debug", help="debug", action="store_true", default=False)
 group = parser.add_mutually_exclusive_group();
 group.add_argument("--pin-setting", dest='pinsetting')
 group.add_argument("--set-coil", dest='setcoil', action='store_true');
 parser.add_argument("val", type=int, nargs='?')
 args = parser.parse_args()
 
-homectrl = HomeControl();
+homectrl = HomeControl(args.debug);
 
 if(args.dumpcoils):
     homectrl.dump_coils()
@@ -102,3 +107,6 @@ if(args.pinsetting):
 
 if(args.setcoil):
     homectrl.set_coil(args.pinindex, args.val);
+
+if(args.uptime):
+    homectrl.uptime()
