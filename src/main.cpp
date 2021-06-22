@@ -21,7 +21,9 @@
 
 Modbus slave(Serial, DEFAULT_SLAVE_ID, RS485_CTRL_PIN);
 
-const uint8_t digital_pins_numbers[NR_OF_DIGITAL_PINS] = {2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13};
+const uint8_t digital_pins_numbers[NR_OF_DIGITAL_PINS] =
+  {10, 11, 12, 13, 14, 15, 16, 17, 9, 6, 5, 3};
+
 digital_pin_counters_t counters[NR_OF_DIGITAL_PINS];
 MultiButton buttons[NR_OF_DIGITAL_PINS];
 uint8_t current_values[NR_OF_DIGITAL_PINS];
