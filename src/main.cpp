@@ -27,7 +27,7 @@ const uint8_t digital_pins_numbers[NR_OF_DIGITAL_PINS] =
 digital_pin_counters_t counters[NR_OF_DIGITAL_PINS];
 MultiButton buttons[NR_OF_DIGITAL_PINS];
 uint8_t current_values[NR_OF_DIGITAL_PINS];
-output_state_t output_states[NR_OF_DIGITAL_PINS];
+struct output_pin_state output_states[NR_OF_DIGITAL_PINS];
 
 void read_settings_from_eeprom(settings_t &settings) {
   EEPROM.get(SETTINGS_OFFSET, settings);
@@ -74,17 +74,17 @@ void set_pin_output(digital_pin_context_t *ctx, uint8_t value) {
   }
 }
 
-state_t handle_output_init_state(digital_pin_context_t *ctx, uint8_t command) {
+enum output_state handle_output_init_state(digital_pin_context_t *ctx, uint8_t command) {
   uint8_t output = ctx->settings.output_value;
   set_pin_output(ctx, output);
   return OUTPUT_STATE_IDLE;
 }
 
-state_t handle_output_idle_state(digital_pin_context_t *ctx, uint8_t command) {
+enum output_state handle_output_idle_state(digital_pin_context_t *ctx, uint8_t command) {
   uint8_t pwm = has_pwm(&ctx->settings);
   uint8_t on_value = pwm ? ctx->settings.pwm_on_value : 0x1;
   uint8_t new_value = *ctx->current_value;
-  state_t new_state = OUTPUT_STATE_IDLE;
+  enum output_state new_state = OUTPUT_STATE_IDLE;
   switch (command) {
   case COMMAND_NONE:
     break;
@@ -149,7 +149,7 @@ void save_pwm_on_value(digital_pin_context_t *ctx) {
   write_digital_pin_settings_to_eeprom(ctx->index, ctx->settings);
 }
 
-state_t handle_output_fade_to_on(digital_pin_context_t *ctx, uint8_t command) {
+enum output_state handle_output_fade_to_on(digital_pin_context_t *ctx, uint8_t command) {
   uint8_t on_value = ctx->settings.pwm_on_value;
   if (*ctx->current_value >= on_value) {
     return OUTPUT_STATE_IDLE;
@@ -163,7 +163,7 @@ inline unsigned long millis_since_last_state_change(digital_pin_context_t *ctx) 
   return millis()-ctx->output_state->last_update;
 }
 
-state_t handle_output_fade_to_on_wait(digital_pin_context_t *ctx,
+enum output_state handle_output_fade_to_on_wait(digital_pin_context_t *ctx,
                                       uint8_t command) {
   unsigned long diff = millis_since_last_state_change(ctx);
   if (diff > FADE_SPEED) {
@@ -173,7 +173,7 @@ state_t handle_output_fade_to_on_wait(digital_pin_context_t *ctx,
   }
 }
 
-state_t handle_output_fade_to_off(digital_pin_context_t *ctx, uint8_t command) {
+enum output_state handle_output_fade_to_off(digital_pin_context_t *ctx, uint8_t command) {
   if (*ctx->current_value == 0x00) {
     return OUTPUT_STATE_IDLE;
   }
@@ -182,7 +182,7 @@ state_t handle_output_fade_to_off(digital_pin_context_t *ctx, uint8_t command) {
   return OUTPUT_STATE_FADE_TO_OFF_WAIT;
 }
 
-state_t handle_output_fade_to_off_wait(digital_pin_context_t *ctx,
+enum output_state handle_output_fade_to_off_wait(digital_pin_context_t *ctx,
                                       uint8_t command) {
   unsigned long diff = millis_since_last_state_change(ctx);
   if (diff > FADE_SPEED) {
@@ -192,7 +192,7 @@ state_t handle_output_fade_to_off_wait(digital_pin_context_t *ctx,
   }
 }
 
-state_t handle_output_pwm_up(digital_pin_context_t *ctx, uint8_t command) {
+enum output_state handle_output_pwm_up(digital_pin_context_t *ctx, uint8_t command) {
   if (command == COMMAND_TRIGGER_PWM_UP_DOWN_STOP) {
     return OUTPUT_STATE_PWM_UP_DOWN_IDLE;
   }
@@ -203,7 +203,7 @@ state_t handle_output_pwm_up(digital_pin_context_t *ctx, uint8_t command) {
   return OUTPUT_STATE_PWM_UP_WAIT;
 }
 
-state_t handle_output_pwm_up_wait(digital_pin_context_t *ctx, uint8_t command) {
+enum output_state handle_output_pwm_up_wait(digital_pin_context_t *ctx, uint8_t command) {
   if (command == COMMAND_TRIGGER_PWM_UP_DOWN_STOP) {
     return OUTPUT_STATE_PWM_UP_DOWN_IDLE;
   }
@@ -215,7 +215,7 @@ state_t handle_output_pwm_up_wait(digital_pin_context_t *ctx, uint8_t command) {
   }
 }
 
-state_t handle_output_pwm_down(digital_pin_context_t *ctx, uint8_t command) {
+enum output_state handle_output_pwm_down(digital_pin_context_t *ctx, uint8_t command) {
   if (command == COMMAND_TRIGGER_PWM_UP_DOWN_STOP) {
     save_pwm_on_value(ctx);
     return OUTPUT_STATE_IDLE;
@@ -227,7 +227,7 @@ state_t handle_output_pwm_down(digital_pin_context_t *ctx, uint8_t command) {
   return OUTPUT_STATE_PWM_DOWN_WAIT;
 }
 
-state_t handle_output_pwm_down_wait(digital_pin_context_t *ctx,
+enum output_state handle_output_pwm_down_wait(digital_pin_context_t *ctx,
                                     uint8_t command) {
   if (command == COMMAND_TRIGGER_PWM_UP_DOWN_STOP) {
     save_pwm_on_value(ctx);
@@ -242,7 +242,7 @@ state_t handle_output_pwm_down_wait(digital_pin_context_t *ctx,
 }
 
 #define UP_DOWN_TIMEOUT 2000
-state_t handle_output_pwm_up_down_idle(digital_pin_context_t *ctx,
+enum output_state handle_output_pwm_up_down_idle(digital_pin_context_t *ctx,
                                        uint8_t command) {
   if (command == COMMAND_TRIGGER_PWM_UP_DOWN_START) {
     return OUTPUT_STATE_PWM_DOWN;
@@ -257,8 +257,8 @@ state_t handle_output_pwm_up_down_idle(digital_pin_context_t *ctx,
 }
 
 void update_output(digital_pin_context_t *ctx, uint8_t command) {
-  state_t current_state = ctx->output_state->state;
-  state_t next_state;
+  enum output_state current_state = ctx->output_state->state;
+  enum output_state next_state;
   switch (current_state) {
   case OUTPUT_STATE_INIT:
     next_state = handle_output_init_state(ctx, command);
@@ -603,7 +603,7 @@ void loop_digital_pins() {
 void setup() {
   memset(counters, 0, NR_OF_DIGITAL_PINS * sizeof(digital_pin_counters_t));
   memset(current_values, 0, NR_OF_DIGITAL_PINS * sizeof(uint8_t));
-  memset(output_states, 0, NR_OF_DIGITAL_PINS * sizeof(output_state_t));
+  memset(output_states, 0, NR_OF_DIGITAL_PINS * sizeof(struct output_pin_state));
   settings_t settings;
   read_settings_from_eeprom(settings);
   Serial.begin(BAUD_RATE);

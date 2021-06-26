@@ -67,7 +67,7 @@ typedef struct {
   uint16_t release_cnt;
 } digital_pin_counters_t;
 
-typedef enum {
+enum output_state {
   OUTPUT_STATE_INIT=0,
   OUTPUT_STATE_IDLE,
   OUTPUT_STATE_FADE_TO_ON,
@@ -79,12 +79,12 @@ typedef enum {
   OUTPUT_STATE_PWM_UP_DOWN_IDLE,
   OUTPUT_STATE_PWM_DOWN,
   OUTPUT_STATE_PWM_DOWN_WAIT,
-} state_t;
+};
 
-typedef struct {
-  state_t state;
+struct output_pin_state {
+  enum output_state state;
   unsigned long last_update;
-} output_state_t;
+};
 
 typedef struct {
   uint8_t index;
@@ -92,15 +92,14 @@ typedef struct {
   digital_pin_setting_t settings;
   digital_pin_counters_t *counters;
   uint8_t *current_value;
-  output_state_t *output_state;
+  struct output_pin_state *output_state;
 } digital_pin_context_t;
-
 
 extern const uint8_t digital_pins_numbers[];
 extern digital_pin_counters_t counters[];
 extern MultiButton buttons[];
 extern uint8_t current_values[];
-extern output_state_t output_states[];
+extern struct output_pin_state output_states[];
 
 
 void handle_click(digital_pin_context_t *pin_ctx);
