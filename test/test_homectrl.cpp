@@ -1,6 +1,8 @@
 #include <unity.h>
-#include <eeprom.h>
+#include <EEPROM.h>
 #include <homectrl.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
 
 #define SLAVE_ID 3
 
@@ -65,7 +67,6 @@ void test_read_release_cnt_pin_2(void) {
   uint16_t value = read_single_input_register(8 + 2*8 + 5);
   TEST_ASSERT_EQUAL(5, value);
 }
-
 
 void setup() {
   // NOTE!!! Wait for >2 secs

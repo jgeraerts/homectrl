@@ -13,6 +13,11 @@
 #define DEFAULT_SLAVE_ID 1
 #define BAUD_RATE 19200
 #define RS485_CTRL_PIN 8
+#define ONEWIRE_PIN 2
+
+#define NR_OF_ONEWIRE_DEVICES 8
+#define NR_OF_DIGITAL_PINS 12
+#define ONEWIRE_POLL_TIME 60000
 
 
 #define DIGITAL_PIN_MODE_MASK 0x03
@@ -34,9 +39,6 @@
 #define COMMAND_FADE_TOGGLE 0x08
 #define COMMAND_TRIGGER_PWM_UP_DOWN_START 0x09
 #define COMMAND_TRIGGER_PWM_UP_DOWN_STOP 0x0a
-
-#define NR_OF_DIGITAL_PINS 12
-
 
 typedef struct __attribute__((__packed__)) {
   uint8_t mode;
@@ -84,6 +86,26 @@ enum output_state {
 struct output_pin_state {
   enum output_state state;
   unsigned long last_update;
+};
+
+enum onewire_state {
+  ONEWIRE_STATE_INIT=0,
+  ONEWIRE_STATE_IDLE,
+  ONEWIRE_STATE_REQUEST_TEMPERATURES,
+  ONEWIRE_STATE_WAIT_CONVERSION,
+  ONEWIRE_STATE_READ_TEMPERATURES,
+};
+
+struct onewire_device {
+  uint8_t address[8];
+  int16_t raw_temperature;
+};
+
+struct onewire_context {
+  enum onewire_state state;
+  unsigned long last_update;
+  uint8_t sensor_count;
+  struct onewire_device *devices;
 };
 
 typedef struct {

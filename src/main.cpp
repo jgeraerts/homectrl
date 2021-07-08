@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include <homectrl.h>
 #include <MultiButton.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
 
 #define FADE_SPEED 5
 
@@ -20,6 +22,8 @@
 #endif 
 
 Modbus slave(Serial, DEFAULT_SLAVE_ID, RS485_CTRL_PIN);
+OneWire onewire(ONEWIRE_PIN);
+DallasTemperature sensors(&onewire);
 
 const uint8_t digital_pins_numbers[NR_OF_DIGITAL_PINS] =
   {10, 11, 12, 13, 14, 15, 16, 17, 9, 6, 5, 3};
@@ -28,6 +32,8 @@ digital_pin_counters_t counters[NR_OF_DIGITAL_PINS];
 MultiButton buttons[NR_OF_DIGITAL_PINS];
 uint8_t current_values[NR_OF_DIGITAL_PINS];
 struct output_pin_state output_states[NR_OF_DIGITAL_PINS];
+struct onewire_device onewire_devices[NR_OF_ONEWIRE_DEVICES];
+struct onewire_context onewire_context;
 
 void read_settings_from_eeprom(settings_t &settings) {
   EEPROM.get(SETTINGS_OFFSET, settings);
@@ -511,8 +517,9 @@ uint16_t read_single_input_register(uint16_t address) {
 }
 
 uint8_t cb_read_input_register(uint8_t fc, uint16_t address, uint16_t length) {
-  uint16_t max_size = NR_OF_DIGITAL_PINS*INPUT_REGISTER_PER_PIN_SIZE
-    + INPUT_REGISTER_PER_PIN_ADDRESS_OFFSET;
+  uint16_t max_size =
+    NR_OF_DIGITAL_PINS*INPUT_REGISTER_PER_PIN_SIZE
+    + INPUT_REGISTER_PER_PIN_ADDRESS_OFFSET + NR_OF_ONEWIRE_DEVICES;
   if (address > max_size || address + length > max_size) {
     return STATUS_ILLEGAL_DATA_ADDRESS;
   }
@@ -598,12 +605,91 @@ void loop_digital_pins() {
   }
 }
 
+enum onewire_state
+handle_onewire_read_temperatures(struct onewire_context *context) {
+  for (uint8_t i; i < context->sensor_count; i++) {
+    uint16_t temperature = sensors.getTemp(context->devices[i].address);
+    context->devices[i].raw_temperature=temperature;
+  }
+  return ONEWIRE_STATE_IDLE;
+}
+
+enum onewire_state
+handle_onewire_wait_conversion(struct onewire_context *context) {
+  if (sensors.isConversionComplete()) {
+    return ONEWIRE_STATE_READ_TEMPERATURES;
+  } else {
+    return ONEWIRE_STATE_WAIT_CONVERSION;
+  }
+}
+
+enum onewire_state
+handle_onewire_request_temperatures(struct onewire_context *context) {
+  sensors.requestTemperatures();
+  return ONEWIRE_STATE_WAIT_CONVERSION;
+}
+
+enum onewire_state handle_onewire_idle(struct onewire_context *context) {
+  if (millis() - context->last_update > ONEWIRE_POLL_TIME) {
+    return ONEWIRE_STATE_REQUEST_TEMPERATURES;
+  } else {
+    return ONEWIRE_STATE_IDLE;
+  }
+}
+
+enum onewire_state handle_onewire_init(struct onewire_context *context) {
+  onewire.reset_search();
+  for (uint8_t i; i < NR_OF_ONEWIRE_DEVICES; i++) {
+    if (!onewire.search(context->devices[i].address)) {
+      context->sensor_count=i+1;
+      break;
+    }
+  }
+  return ONEWIRE_STATE_IDLE;
+};
+
+void initialize_onewire_context(struct onewire_context *context,
+                                struct onewire_device *devices) {
+  context->last_update=millis();
+  context->state=ONEWIRE_STATE_INIT;
+  context->devices=devices;
+}
+
+void loop_onewire(struct onewire_context* context) {
+  enum onewire_state current = context->state;
+  enum onewire_state next = current;
+  switch (current) {
+  case ONEWIRE_STATE_INIT:
+    next = handle_onewire_init(context);
+    break;
+  case ONEWIRE_STATE_IDLE:
+    next = handle_onewire_idle(context);
+    break;
+  case ONEWIRE_STATE_REQUEST_TEMPERATURES:
+    next = handle_onewire_request_temperatures(context);
+    break;
+  case ONEWIRE_STATE_WAIT_CONVERSION:
+    next = handle_onewire_wait_conversion(context);
+    break;
+  case ONEWIRE_STATE_READ_TEMPERATURES:
+    next = handle_onewire_read_temperatures(context);
+  default:
+    break;
+  }
+
+  if (current != next) {
+    context->state=next;
+    context->last_update=millis();
+  }
+}
+
 #ifndef UNIT_TEST
 // cppcheck-suppress unusedFunction
 void setup() {
   memset(counters, 0, NR_OF_DIGITAL_PINS * sizeof(digital_pin_counters_t));
   memset(current_values, 0, NR_OF_DIGITAL_PINS * sizeof(uint8_t));
   memset(output_states, 0, NR_OF_DIGITAL_PINS * sizeof(struct output_pin_state));
+  memset(onewire_devices, 0, NR_OF_ONEWIRE_DEVICES * sizeof(struct onewire_device));
   settings_t settings;
   read_settings_from_eeprom(settings);
   Serial.begin(BAUD_RATE);
@@ -618,7 +704,9 @@ void setup() {
     read_digital_pin_settings_from_eeprom(i, pin_setting);
     pinMode(digital_pins_numbers[i], pin_mode(&pin_setting));
   }
-  
+
+  initialize_onewire_context(&onewire_context, onewire_devices);
+    
   slave.cbVector[CB_READ_COILS] = cb_read_coil;
   slave.cbVector[CB_WRITE_COILS] = cb_write_coil;
   slave.cbVector[CB_READ_HOLDING_REGISTERS] = cb_read_holding_register;
@@ -631,6 +719,7 @@ void setup() {
 void loop() {
   slave.poll();
   loop_digital_pins();
+  loop_onewire(&onewire_context);
 };
 
 #endif
